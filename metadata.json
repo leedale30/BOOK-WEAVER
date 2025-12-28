@@ -1,0 +1,5 @@
+{
+  "name": "PDF Book Weaver",
+  "description": "An application that transforms a PDF book into a structured, web-based format. It uses AI to analyze the document's layout, extracting text and images, and then reconstructs it into an interactive website with a navigable table of contents.",
+  "requestFramePermissions": []
+}
