@@ -4,15 +4,22 @@ import { AppState } from '../types';
 
 interface Background3DProps {
   appState: AppState;
+  themeColor: string;
 }
 
-const Background3D: React.FC<Background3DProps> = ({ appState }) => {
+const Background3D: React.FC<Background3DProps> = ({ appState, themeColor }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const particlesRef = useRef<THREE.Points | null>(null);
   const mouseRef = useRef({ x: 0, y: 0 });
+  const targetColor = useRef(new THREE.Color(themeColor));
+
+  // Update target color whenever themeColor prop changes
+  useEffect(() => {
+    targetColor.current.set(themeColor);
+  }, [themeColor]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -31,23 +38,26 @@ const Background3D: React.FC<Background3DProps> = ({ appState }) => {
     rendererRef.current = renderer;
 
     // Particle System
-    const particleCount = 1500;
+    const particleCount = 2000; // Increased count for better detail
     const geometry = new THREE.BufferGeometry();
     const positions = new Float32Array(particleCount * 3);
+    const initialPositions = new Float32Array(particleCount * 3);
     const velocities = new Float32Array(particleCount * 3);
 
     for (let i = 0; i < particleCount * 3; i++) {
-      positions[i] = (Math.random() - 0.5) * 10;
-      velocities[i] = (Math.random() - 0.5) * 0.02;
+      const pos = (Math.random() - 0.5) * 12;
+      positions[i] = pos;
+      initialPositions[i] = pos;
+      velocities[i] = (Math.random() - 0.5) * 0.01;
     }
 
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     
     const material = new THREE.PointsMaterial({
-      color: 0x38bdf8,
-      size: 0.035,
+      color: new THREE.Color(themeColor),
+      size: 0.03,
       transparent: true,
-      opacity: 0.6,
+      opacity: 0.5,
       blending: THREE.AdditiveBlending,
     });
 
@@ -62,8 +72,9 @@ const Background3D: React.FC<Background3DProps> = ({ appState }) => {
     };
 
     const handleMouseMove = (e: MouseEvent) => {
-      mouseRef.current.x = (e.clientX / window.innerWidth) * 2 - 1;
-      mouseRef.current.y = -(e.clientY / window.innerHeight) * 2 + 1;
+      // Normalize to -1 to 1, but mapped to scene units (~ -5 to 5 on plane z=0)
+      mouseRef.current.x = (e.clientX / window.innerWidth) * 10 - 5;
+      mouseRef.current.y = -(e.clientY / window.innerHeight) * 10 + 5;
     };
 
     window.addEventListener('resize', handleResize);
@@ -73,32 +84,60 @@ const Background3D: React.FC<Background3DProps> = ({ appState }) => {
     const animate = () => {
       frameId = requestAnimationFrame(animate);
 
-      if (particlesRef.current) {
+      if (particlesRef.current && cameraRef.current) {
         const positions = particlesRef.current.geometry.attributes.position.array as Float32Array;
-        
-        // Behavior based on state - reduced multipliers for slower movement
-        const speedMultiplier = appState === AppState.PROCESSING ? 2.5 : 1;
+        const speedMultiplier = appState === AppState.PROCESSING ? 3.0 : 1;
 
-        // Base slow rotation
-        particlesRef.current.rotation.y += 0.0003 * speedMultiplier;
-        particlesRef.current.rotation.x += 0.00015 * speedMultiplier;
+        // Smooth Color Transitions
+        material.color.lerp(targetColor.current, 0.05);
 
-        // Processing swirl - subtle movement
-        if (appState === AppState.PROCESSING) {
-          const time = Date.now() * 0.0001;
-          for (let i = 0; i < particleCount; i++) {
-            const ix = i * 3;
-            const iy = i * 3 + 1;
-            positions[ix] += Math.sin(time + positions[iy]) * 0.005;
-            positions[iy] += Math.cos(time + positions[ix]) * 0.005;
+        // Slow rotation base
+        particlesRef.current.rotation.y += 0.0002 * speedMultiplier;
+        particlesRef.current.rotation.x += 0.0001 * speedMultiplier;
+
+        // Mouse interaction logic (Repulsion)
+        const mouseX = mouseRef.current.x;
+        const mouseY = mouseRef.current.y;
+
+        for (let i = 0; i < particleCount; i++) {
+          const ix = i * 3;
+          const iy = i * 3 + 1;
+          const iz = i * 3 + 2;
+
+          // 1. Return to home position slowly (spring-like effect)
+          positions[ix] += (initialPositions[ix] - positions[ix]) * 0.01;
+          positions[iy] += (initialPositions[iy] - positions[iy]) * 0.01;
+          positions[iz] += (initialPositions[iz] - positions[iz]) * 0.01;
+
+          // 2. Mouse Repulsion
+          const dx = positions[ix] - mouseX;
+          const dy = positions[iy] - mouseY;
+          const distSq = dx * dx + dy * dy;
+          const radiusSq = 2.0; // 1.4 units influence radius
+
+          if (distSq < radiusSq) {
+            const dist = Math.sqrt(distSq);
+            const force = (radiusSq - distSq) / radiusSq;
+            positions[ix] += dx * force * 0.1;
+            positions[iy] += dy * force * 0.1;
           }
-          particlesRef.current.geometry.attributes.position.needsUpdate = true;
-        }
 
-        // Smoother camera parallax
-        camera.position.x += (mouseRef.current.x * 0.8 - camera.position.x) * 0.02;
-        camera.position.y += (mouseRef.current.y * 0.8 - camera.position.y) * 0.02;
-        camera.lookAt(scene.position);
+          // 3. Processing swirl
+          if (appState === AppState.PROCESSING) {
+            const time = Date.now() * 0.0005;
+            positions[ix] += Math.sin(time + positions[iy]) * 0.01;
+            positions[iy] += Math.cos(time + positions[ix]) * 0.01;
+          }
+        }
+        
+        particlesRef.current.geometry.attributes.position.needsUpdate = true;
+
+        // Camera parallax
+        const camTargetX = (mouseRef.current.x * 0.1);
+        const camTargetY = (mouseRef.current.y * 0.1);
+        cameraRef.current.position.x += (camTargetX - cameraRef.current.position.x) * 0.02;
+        cameraRef.current.position.y += (camTargetY - cameraRef.current.position.y) * 0.02;
+        cameraRef.current.lookAt(scene.position);
       }
 
       renderer.render(scene, camera);

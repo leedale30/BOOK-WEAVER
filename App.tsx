@@ -13,18 +13,21 @@ const App: React.FC = () => {
   const [book, setBook] = useState<Book | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [processingMessage, setProcessingMessage] = useState<string>('');
+  const [activeThemeColor, setActiveThemeColor] = useState<string>('#38bdf8'); // Default accent
   
   const resetApp = () => {
     setAppState(AppState.IDLE);
     setBook(null);
     setError(null);
     setProcessingMessage('');
+    setActiveThemeColor('#38bdf8');
   };
 
   const handleFileSelect = useCallback(async (file: File) => {
     setAppState(AppState.PROCESSING);
     setError(null);
     setBook(null);
+    setActiveThemeColor('#ffffff'); // Processing state is white/bright
 
     try {
       setProcessingMessage('Analyzing document layers...');
@@ -39,11 +42,13 @@ const App: React.FC = () => {
       
       setBook(structuredBook);
       setAppState(AppState.READY);
+      setActiveThemeColor('#38bdf8');
     } catch (err) {
       console.error(err);
       const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
       setError(`Extraction failed. ${errorMessage}`);
       setAppState(AppState.ERROR);
+      setActiveThemeColor('#ef4444'); // Error state is red
     }
   }, []);
 
@@ -52,7 +57,13 @@ const App: React.FC = () => {
       case AppState.PROCESSING:
         return <ProcessingView message={processingMessage} />;
       case AppState.READY:
-        return book ? <BookView book={book} onReset={resetApp} /> : <div />;
+        return book ? (
+          <BookView 
+            book={book} 
+            onReset={resetApp} 
+            onThemeColorChange={setActiveThemeColor} 
+          />
+        ) : <div />;
       case AppState.ERROR:
         return (
           <div className="text-center p-8 glass-panel rounded-2xl max-w-lg mx-auto">
@@ -74,7 +85,7 @@ const App: React.FC = () => {
 
   return (
     <div className="relative min-h-screen text-slate-100 flex flex-col items-center">
-      <Background3D appState={appState} />
+      <Background3D appState={appState} themeColor={activeThemeColor} />
       
       <div className="relative z-20 w-full max-w-7xl mx-auto flex flex-col h-screen px-4 py-6 md:px-8">
         <header className="w-full flex items-center justify-between mb-8">
